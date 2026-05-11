@@ -24,3 +24,6 @@ cat /tmp/pbi_time.txt
 Macro | Descrição
 {$URL_POWERBI} | Link do dashboard publicado.
 {$PBI_UPDATE_INTERVAL} | Tempo máximo aceitável sem atualização (Ex: 1h).
+
+## ⚠️ Nota Técnica
+Certifique-se de que o usuário zabbix tenha permissão para acessar o DISPLAY=:0 (XServer) para capturar a tela.
