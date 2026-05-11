@@ -31,8 +31,8 @@ Permissão necessária: sudo chmod +x /usr/local/bin/get_pbi_time.sh
 ```
 ## 🔍 Comandos de Diagnóstico
 Utilize estes comandos no terminal do Raspberry para testar o funcionamento:
-Objetivo | Comando
-Testar OCR | zabbix_agent2 -t pbi.last_update
-Print Manual | DISPLAY=:0 scrot /tmp/teste.png
-Simular Enter | DISPLAY=:0 xdotool key Return
-Simular F5 | DISPLAY=:0 xdotool key F5
+### Objetivo | Comando
+- Testar OCR | zabbix_agent2 -t pbi.last_update
+- Print Manual | DISPLAY=:0 scrot /tmp/teste.png
+- Simular Enter | DISPLAY=:0 xdotool key Return
+- Simular F5 | DISPLAY=:0 xdotool key F5
