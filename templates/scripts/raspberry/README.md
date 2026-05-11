@@ -28,7 +28,7 @@ Permissão necessária: sudo chmod +x /usr/local/bin/get_pbi_time.sh
 	# Transforma a imagem em texto (OCR)
 	tesseract /tmp/clock_area.png /tmp/pbi_time -l por > /dev/null 2>&1
 	cat /tmp/pbi_time.txt
-	```
+```
 ## 🔍 Comandos de Diagnóstico
 Utilize estes comandos no terminal do Raspberry para testar o funcionamento:
 Objetivo | Comando
