@@ -1,0 +1,62 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 36bff6c29af64692839d077febfc7079
+      name: 'Templates/Network devices'
+  templates:
+    - uuid: 72bc36cd05fa4b92b52a9732f7c5eeed
+      template: 'Raspberry - PowerBI'
+      name: 'Raspberry - PowerBI'
+      templates:
+        - name: 'Linux by Zabbix agent for Raspberry'
+        - name: 'Raspberry Kiosk SGA'
+      groups:
+        - name: 'Templates/Network devices'
+      items:
+        - uuid: 20ed247a303a493381af15fa3dd099f3
+          name: 'Última Atualização do Painel (OCR)'
+          key: pbi.last_update
+          delay: 10m
+          value_type: CHAR
+          trends: '0'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - '(\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2})'
+                - \1
+          timeout: 30s
+          triggers:
+            - uuid: a9f090797d414fd490e7945418041217
+              expression: 'countunique(/Raspberry - PowerBI/pbi.last_update,125)=0'
+              name: 'Painel Desatualizado em {HOST.NAME}'
+              priority: WARNING
+              manual_close: 'YES'
+              dependencies:
+                - name: 'Painel deslogado (Tela de Login detectada) em {HOST.NAME}'
+                  expression: 'nodata(/Raspberry - PowerBI/pbi.last_update, 25m) = 1'
+            - uuid: cd71af44ffa847239c7a4cfd5c3231db
+              expression: 'nodata(/Raspberry - PowerBI/pbi.last_update, 25m) = 1'
+              name: 'Painel deslogado (Tela de Login detectada) em {HOST.NAME}'
+              priority: WARNING
+              manual_close: 'YES'
+              dependencies:
+                - name: 'ICMP Ping: Unavailable by ICMP ping'
+                  expression: 'max(/Raspberry - PowerBI/icmpping,#3)=0'
+                - name: 'Serviço kiosk.service não esta rodando em {HOST.NAME}'
+                  expression: 'last(/Raspberry - PowerBI/systemd.unit.info[kiosk.service,ActiveState])<>"active"'
+      macros:
+        - macro: '{$TEXTO_VALIDACAO}'
+        - macro: '{$URL_POWERBI}'
+          description: 'URL específica do painel PowerBI para este host.'
+      valuemaps:
+        - uuid: 76fdd67552a746a5923330d7ad5c860c
+          name: 'Status de Passo Web'
+          mappings:
+            - value: '0'
+              newvalue: '✅ OK / Sucesso'
+            - value: '1'
+              newvalue: '❌ Erro de Validação (String)'
+            - value: '2'
+              newvalue: '❌ Falha de Conexão (HTTP Error)'
+            - value: '3'
+              newvalue: '❌ Timeout'

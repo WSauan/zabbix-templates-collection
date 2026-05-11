@@ -1,0 +1,202 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 36bff6c29af64692839d077febfc7079
+      name: 'Templates/Network devices'
+  templates:
+    - uuid: fff46b36d5c944d3aa7b8d038d69aeed
+      template: 'Raspberry Kiosk SGA'
+      name: 'Raspberry Kiosk SGA'
+      description: |
+        ### Monitoramento Avançado de Kiosk Raspberry Pi
+                Este template realiza o monitoramento em três camadas:
+                1. **Hardware**: Energia (Sub-tensão) e Temperatura (Soft Limit).
+                2. **Sistema**: Status do serviço Systemd e processos do navegador.
+                3. **Aplicação**: Validação de conteúdo visual via Cenário Web.
+        
+        **Requisito**: Definir a macro {$URL_KANBAN} no nível do Host.
+      groups:
+        - name: 'Templates/Network devices'
+      items:
+        - uuid: 41640d861a214efa804c9c4f7a3841ee
+          name: 'Uso de CPU do Firefox'
+          key: 'proc.cpu.util[firefox]'
+          value_type: FLOAT
+          trends: '0'
+          units: '%'
+          description: 'Mede o consumo de CPU do Firefox. Utilizado para detectar se o navegador travou (loop infinito).'
+          triggers:
+            - uuid: 6c161f94572045a1aafa1a06e75ed482
+              expression: 'min(/Raspberry Kiosk SGA/proc.cpu.util[firefox],5m)>95'
+              name: 'Firefox travado (CPU saturada) em {HOST.NAME}'
+              priority: AVERAGE
+              description: 'O Firefox manteve um consumo de CPU acima de 95% por mais de 5 minutos. Isso é um forte indicativo de que a aplicação Web entrou em loop, travou o JavaScript ou a página congelou, impedindo a atualização da pagina.'
+        - uuid: a88b387a3b264f4b9a32a7cddd57df23
+          name: 'Status do Processo Firefox'
+          key: 'proc.num[,,,"firefox|chromium"]'
+          description: 'Verifica se o binário do Firefox está em execução no sistema.'
+          valuemap:
+            name: 'Status de Execução de Processo Firefox'
+          triggers:
+            - uuid: b13c924c3ee442fab5b0c76cefe8ec45
+              expression: 'min(/Raspberry Kiosk SGA/proc.num[,,,"firefox|chromium"],5m)=0'
+              name: 'Firefox não está rodando no Raspberry {HOST.NAME}'
+              priority: HIGH
+              description: 'O processo do navegador Firefox foi encerrado ou não foi iniciado corretamente. Como o serviço depende do navegador para exibir o Kanban, o Kiosk está parado.'
+              manual_close: 'YES'
+              dependencies:
+                - name: 'Energia: Sub-tensão Crítica AGORA {HOST.NAME}'
+                  expression: 'bitand(last(/Raspberry Kiosk SGA/rpi.undervoltage),1)=1'
+                - name: 'Linux: Zabbix agent is not available'
+                  expression: 'max(/Linux by Zabbix agent for Raspberry/zabbix[host,agent,available],{$AGENT.TIMEOUT})=0'
+        - uuid: 7983eb8700694f4eb671672b249a7dfe
+          name: 'Status de Throttling (Temperatura)'
+          type: DEPENDENT
+          key: rpi.throttling.status
+          delay: '0'
+          valuemap:
+            name: 'Rpi: Status de Throttling (Temperatura)'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  // O valor chega como decimal (ex: 327685)
+                  // Filtramos os bits 3 (Temperatura limitada agora) e 18 (Ocorreu no passado)
+                  var mask = 0x8 | 0x40000; // Máscara para Throttling
+                  
+                  if (value & mask) {
+                      // Se o bit 3 estiver ligado, o Pi está quente agora
+                      return (value & 0x8) ? 8 : 262144;
+                  }
+                  return 0; // Se não houver throttling, retorna 0
+          master_item:
+            key: rpi.undervoltage
+        - uuid: 06216cb42e9346c7b089aedc6283eaef
+          name: 'Status de Energia (Undervoltage)'
+          key: rpi.undervoltage
+          trends: '0'
+          description: |
+            Monitoramento via bitmask do comando get_throttled.
+            
+            Coleta os flags do firmware (vcgencmd get_throttled).
+                        - 0x1: Sub-tensão atual
+                        - 0x8: Soft limit de temperatura atual (60°C)
+                        - 0x80000: Histórico de temperatura atingido
+          valuemap:
+            name: 'Energia raspberry'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - '0x(.*)'
+                - \1
+            - type: HEX_TO_DECIMAL
+              parameters:
+                - ''
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  // O valor que chega é o decimal (ex: 327685)
+                  // Queremos verificar apenas o Bit 0 (Energia Ruim Agora) 
+                  // ou o Bit 16 (Energia Ruim no Passado)
+                  var mask = 0x1 | 0x10000; // Isso equivale a 65537 em decimal
+                  
+                  if (value & mask) {
+                      // Se houver qualquer erro de energia, retorna o valor de erro
+                      // para bater com seu Value Mapping
+                      return (value & 0x1) ? 1 : 65536; 
+                  }
+                  
+                  return 0; // Se não houver erro de energia, retorna 0 (Energia OK)
+          triggers:
+            - uuid: 64ed7ced7d334c94884c510d6437bfee
+              expression: 'bitand(last(/Raspberry Kiosk SGA/rpi.undervoltage),1)=1'
+              name: 'Energia: Sub-tensão Crítica AGORA {HOST.NAME}'
+              priority: HIGH
+              description: 'Indica que a voltagem do Raspberry Pi caiu abaixo de 4.63V neste exato momento. Isso é geralmente causado por uma fonte de alimentação de má qualidade ou cabo muito longo. Risco elevado de corromper o cartão SD e travar o sistema.'
+            - uuid: 326bc75c2f5145b4ac1d4565af69e6b8
+              expression: 'bitand(last(/Raspberry Kiosk SGA/rpi.undervoltage),983040)>0'
+              name: 'Histórico: Problemas detectados desde o Boot {HOST.NAME}'
+              priority: INFO
+              description: 'Esta trigger avisa que, em algum momento desde que o aparelho foi ligado, ocorreu um evento de sub-tensão ou superaquecimento.'
+            - uuid: 8612ffe784964abd845ef14ca3c64c02
+              expression: 'bitand(last(/Raspberry Kiosk SGA/rpi.undervoltage),8)=8'
+              name: 'Temperatura: Soft Limit Atingido {HOST.NAME}'
+              priority: WARNING
+              description: 'O processador atingiu 60°C. O firmware do Raspberry reduziu automaticamente a frequência (clock) para evitar que a temperatura suba mais. Embora o sistema continue funcionando, a performance será reduzida. Recomenda-se verificar a ventilação do local.'
+        - uuid: 73f3042ba2154c99b51f7fe780b2d968
+          name: 'Status do Serviço Kiosk'
+          key: 'systemd.unit.info[kiosk.service,ActiveState]'
+          value_type: CHAR
+          trends: '0'
+          description: 'Verifica se o serviço Systemd que gerencia o modo Kiosk está ativo.'
+          valuemap:
+            name: 'Serviço kiosk'
+          triggers:
+            - uuid: c6f7a21a2bc34b22a564a53edf303214
+              expression: 'last(/Raspberry Kiosk SGA/systemd.unit.info[kiosk.service,ActiveState])<>"active"'
+              name: 'Serviço kiosk.service não esta rodando em {HOST.NAME}'
+              priority: HIGH
+              description: 'O serviço de sistema (kiosk.service) não está com o status "active". Este serviço é responsável por garantir a execução do script que carrega a interface visual do SGA.'
+              manual_close: 'YES'
+              dependencies:
+                - name: 'Firefox não está rodando no Raspberry {HOST.NAME}'
+                  expression: 'min(/Raspberry Kiosk SGA/proc.num[,,,"firefox|chromium"],5m)=0'
+      macros:
+        - macro: '{$TEXTO_VALIDACAO}'
+        - macro: '{$URL_KANBAN}'
+          description: 'URL específica do painel Kanban para este host.'
+      valuemaps:
+        - uuid: de0c3121bd90410e9f271ef4c9d00f49
+          name: 'Energia raspberry'
+          mappings:
+            - value: '0'
+              newvalue: '✅ Energia OK'
+            - value: '1'
+              newvalue: '⚠️ Subtensão (Agora)'
+            - value: '2'
+              newvalue: '⚠️ Turbo Limitado (Agora)'
+            - value: '4'
+              newvalue: '⚠️ Frequência Limitada (Agora)'
+            - value: '65536'
+              newvalue: '🕒 Subtensão (Ocorreu no passado)'
+            - value: '131072'
+              newvalue: '🕒 Turbo Limitado (Passado)'
+            - value: '327680'
+              newvalue: '⚠️ Subtensão (Agora + Passado)'
+            - value: '524288'
+              newvalue: '⚠️ Subtensão Crítica (Throttle)'
+        - uuid: 721b0729f2b144d4a63508d878918a5d
+          name: 'Rpi: Status de Throttling (Temperatura)'
+          mappings:
+            - value: '0'
+              newvalue: '✅ Temperatura OK.'
+            - value: '8'
+              newvalue: '⚠️ Throttling Ativo (Quente).'
+            - value: '262144'
+              newvalue: '🕒 Histórico de Alta Temperatura.'
+        - uuid: 8cad69149a5d42aa9c8130c464b49729
+          name: 'Serviço kiosk'
+          mappings:
+            - value: active
+              newvalue: '✅ Ativo'
+            - value: deactivating
+              newvalue: '❌ Desativando'
+        - uuid: 6533d072889448c59ab4c93d0a5d4c5d
+          name: 'Status de Execução de Processo Firefox'
+          mappings:
+            - value: '0'
+              newvalue: '🛑 Firefox Fechado / Crachou'
+            - type: GREATER_OR_EQUAL
+              value: '1'
+              newvalue: '✅ Firefox em Execução'
+        - uuid: 043ae2acb2124edcaf99ae889ebd63f8
+          name: 'Status de Passo Web'
+          mappings:
+            - value: '0'
+              newvalue: '✅ OK / Sucesso'
+            - value: '1'
+              newvalue: '❌ Erro de Validação (String)'
+            - value: '2'
+              newvalue: '❌ Falha de Conexão (HTTP Error)'
+            - value: '3'
+              newvalue: '❌ Timeout'

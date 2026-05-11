@@ -1,0 +1,187 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 60f1dce8720d41eab748470cd7d4746e
+      name: Printers
+  templates:
+    - uuid: 7f3b5c1a9e2d4f1a8c3b5d7e9f1a2b3c
+      template: HP_Printer_Professional
+      name: 'HP Printer Professional'
+      description: |
+        ## Template HP Printer Professional
+                Monitoramento avançado para frotas HP:
+                - Inventário automático (Série e Modelo)
+                - Contagem de páginas temporal (24h, 7d, 30d)
+                - Status de sensores de atolamento e mensagens LCD
+                - Limpeza de nomes de suprimentos via JavaScript
+      templates:
+        - name: 'Generic by SNMP'
+      groups:
+        - name: Printers
+      items:
+        - uuid: b2c3d4e5f6a74b8c9def0123456789a3
+          name: 'Capacity: Impressões nos últimos 7 dias'
+          type: CALCULATED
+          key: hp.pages_7d
+          delay: 1h
+          params: 'last(//hp.total_pages) - last(//hp.total_pages,#1:now-7d)'
+          description: 'Calcula o volume de impressão acumulado na última semana para análise de carga de trabalho.'
+          tags:
+            - tag: timeframe
+              value: weekly
+        - uuid: a1b2c3d4e5f647898abcdef012345672
+          name: 'Capacity: Impressões nas últimas 24h'
+          type: CALCULATED
+          key: hp.pages_24h
+          delay: 1h
+          params: 'last(//hp.total_pages) - last(//hp.total_pages,#1:now-24h)'
+          description: 'Calcula a produtividade diária subtraindo o valor do contador de 24 horas atrás do valor atual.'
+          tags:
+            - tag: timeframe
+              value: daily
+        - uuid: ebc3c950e5934a248aa23582101c0b6f
+          name: 'Capacity: Impressões nos últimos 30 dias'
+          type: CALCULATED
+          key: hp.pages_30d
+          delay: 1h
+          params: 'last(//hp.total_pages) - last(//hp.total_pages,#1:now-30d)'
+          description: 'Calcula o volume de impressão acumulado no último mês para análise de carga de trabalho.'
+          tags:
+            - tag: timeframe
+              value: month
+        - uuid: e5f6a7b8c9d04e1fa2b3c4d5e6f7a8b6
+          name: 'Device: Status de atolamento (Paper Jam)'
+          type: SNMP_AGENT
+          snmp_oid: .1.3.6.1.4.1.11.2.3.9.1.1.2.9.0
+          key: hp.paper_jam
+          delay: 30s
+          description: 'Monitora os sensores físicos internos para detectar se o papel está obstruído no trajeto de impressão.'
+          tags:
+            - tag: device
+              value: status
+          triggers:
+            - uuid: f6a7b8c9d0e14f2ab3c4d5e6f7a8b9c7
+              expression: abs(change(/HP_Printer_Professional/hp.paper_jam))<>0
+              name: 'HP: Atolamento de papel detectado em {HOST.NAME}'
+              priority: AVERAGE
+              description: 'Trigger acionado quando ocorre uma interrupção física no fluxo de papel.'
+        - uuid: 4e5f6a7b8c9d4e0fa1b2c3d4e5f67891
+          name: 'Capacity: Contador total de impressões'
+          type: SNMP_AGENT
+          snmp_oid: .1.3.6.1.2.1.43.10.2.1.4.1.1
+          key: hp.total_pages
+          delay: 5m
+          description: 'Contador global acumulado de páginas (Marker Life Count). É a métrica fundamental para todos os cálculos de volume de impressão.'
+          tags:
+            - tag: component
+              value: stats
+        - uuid: fe3ca58d222540cf9316cb2fae9a8efe
+          name: 'Device: MAC Address'
+          type: SNMP_AGENT
+          snmp_oid: .1.3.6.1.2.1.2.2.1.6.2
+          key: printer.mac
+          delay: 1d
+          value_type: CHAR
+          trends: '0'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - 'return value.toUpperCase();'
+          tags:
+            - tag: device
+              value: mac
+        - uuid: c3d4e5f6a7b84c9d8e0f1a2b3c4d5e64
+          name: 'Device: Número de série'
+          type: SNMP_AGENT
+          snmp_oid: .1.3.6.1.2.1.43.5.1.1.17.1
+          key: printer.serial
+          delay: 1d
+          value_type: CHAR
+          trends: '0'
+          description: 'Identificação única de hardware (Serial Number) para gestão de ativos e abertura de chamados.'
+          inventory_link: SERIALNO_A
+          tags:
+            - tag: device
+              value: serial
+        - uuid: d4e5f6a7b8c94d0e9f1a2b3c4d5e6f75
+          name: 'Device: Modelo da impressora'
+          type: SNMP_AGENT
+          snmp_oid: .1.3.6.1.2.1.25.3.2.1.3.1
+          key: sys.model
+          delay: 1d
+          value_type: TEXT
+          trends: '0'
+          description: 'Nome oficial do modelo registrado no firmware do equipamento.'
+          inventory_link: MODEL
+          tags:
+            - tag: device
+              value: model
+      discovery_rules:
+        - uuid: 1a2b3c4d5e6f408ebfcb0ef76ab3ceb8
+          name: 'Supply: Descoberta de suprimentos HP'
+          type: SNMP_AGENT
+          snmp_oid: 'discovery[{#SUPPLY_NAME},.1.3.6.1.2.1.43.11.1.1.6.1]'
+          key: hp.supply.discovery
+          delay: 1h
+          description: 'Detecta automaticamente toners e kits de manutenção, utilizando JS para tratar os nomes hexadecimais da HP.'
+          item_prototypes:
+            - uuid: 3576bcc586e14dfaadcc1746e7c58513
+              name: 'Supply: {#SUPPLY_NAME}: Capacidade máxima'
+              type: SNMP_AGENT
+              snmp_oid: '.1.3.6.1.2.1.43.11.1.1.8.1.{#SNMPINDEX}'
+              key: 'hp.supply.max[{#SNMPINDEX}]'
+              delay: 1h
+              tags:
+                - tag: component
+                  value: supply
+            - uuid: f790370cad164a5db2a69fdad74fb568
+              name: 'Supply: {#SUPPLY_NAME}: Valor atual'
+              type: SNMP_AGENT
+              snmp_oid: '.1.3.6.1.2.1.43.11.1.1.9.1.{#SNMPINDEX}'
+              key: 'hp.supply.now[{#SNMPINDEX}]'
+              delay: 1h
+              tags:
+                - tag: component
+                  value: supply
+            - uuid: 2b3c4d5e6f7a4b8c9d0e1f2a3b4c5d69
+              name: 'Supply: {#SUPPLY_NAME}: Nível atual (%)'
+              type: CALCULATED
+              key: 'hp.supply.percent[{#SNMPINDEX}]'
+              units: '%'
+              params: 'last(//hp.supply.now[{#SNMPINDEX}]) / last(//hp.supply.max[{#SNMPINDEX}]) * 100'
+              description: 'Porcentagem calculada da vida útil restante para o suprimento {#SUPPLY_NAME}.'
+              tags:
+                - tag: component
+                  value: supply
+              trigger_prototypes:
+                - uuid: 2876d0dd22c24296ba5c19a095710ecd
+                  expression: 'last(/HP_Printer_Professional/hp.supply.percent[{#SNMPINDEX}])<15'
+                  name: 'HP: Nível de Suprimento Baixo ({#SUPPLY_NAME}) em {HOST.NAME}'
+                  priority: WARNING
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                      var data = JSON.parse(value);
+                      for (var i = 0; i < data.length; i++) {
+                          var hex = data[i]["{#SUPPLY_NAME}"].replace(/\s/g, '');
+                          var str = '';
+                          for (var n = 0; n < hex.length; n += 2) {
+                              var charCode = parseInt(hex.substr(n, 2), 16);
+                              if (charCode > 0) str += String.fromCharCode(charCode);
+                          }
+                          data[i]["{#SUPPLY_NAME}"] = str.split(/( HP| [0-9])/)[0].trim() || str;
+                      }
+                      return JSON.stringify(data);
+                  } catch (e) { return value; }
+      valuemaps:
+        - uuid: 3c4d5e6f7a8b4c9da0e1f2a3b4c5d6e1
+          name: 'HP Professional Status Map'
+          mappings:
+            - value: '1'
+              newvalue: Unknown
+            - value: '2'
+              newvalue: Running
+            - value: '5'
+              newvalue: Down

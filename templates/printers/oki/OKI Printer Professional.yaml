@@ -1,0 +1,173 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 60f1dce8720d41eab748470cd7d4746e
+      name: Printers
+  templates:
+    - uuid: 3b399f0fe6b84f62b799a2e1806fdf9f
+      template: OKI_Printer_Professional
+      name: 'OKI Printer Professional'
+      description: |
+        ## Template OKI Printer Professional
+                Monitoramento avançado focado em conformidade e performance:
+                - Inventário automático (Série e Modelo via SNMP)
+                - Contagem de páginas temporal (24h, 7d, 30d)
+                - Sensores físicos de atolamento e mensagens de painel
+                - Limpeza de nomes de suprimentos via JavaScript
+      templates:
+        - name: 'Generic by SNMP'
+      groups:
+        - name: Printers
+      items:
+        - uuid: 3b530b9a9d6240839cb9a89657cb3b44
+          name: 'Device: Status de atolamento (Paper Jam)'
+          type: SNMP_AGENT
+          snmp_oid: .1.3.6.1.4.1.11.2.3.9.1.1.2.9.0
+          key: oki.paper_jam
+          delay: 30s
+          trends: '0'
+          description: 'Monitora os sensores físicos internos para detectar se o papel está obstruído no trajeto de impressão.'
+          tags:
+            - tag: device
+              value: status
+          triggers:
+            - uuid: 98d368f67c594661bd6999c271d0c310
+              expression: abs(change(/OKI_Printer_Professional/oki.paper_jam))<>0
+              name: 'OKI: Atolamento de papel detectado em {HOST.NAME}'
+              priority: AVERAGE
+              description: 'Trigger acionado quando ocorre uma interrupção física no fluxo de papel.'
+        - uuid: 2c991a70ddc74d01ab62de93ea7bbbcd
+          name: 'Device: MAC Address'
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.2.1.2.2.1.6.1
+          key: printer.mac
+          delay: 1d
+          value_type: CHAR
+          trends: '0'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - 'return value.toUpperCase();'
+          tags:
+            - tag: device
+              value: mac
+        - uuid: 09f042700dbf4fa5b6b52983f7d21594
+          name: 'Device: Número de série'
+          type: SNMP_AGENT
+          snmp_oid: .1.3.6.1.2.1.43.5.1.1.17.1
+          key: printer.serial
+          delay: 1d
+          value_type: CHAR
+          trends: '0'
+          description: 'Identificação única de hardware (Serial Number) para gestão de ativos e abertura de chamados.'
+          tags:
+            - tag: device
+              value: serial
+        - uuid: 4a36282126294317a783058341641012
+          name: 'Capacity: Impressões nos últimos 7 dias'
+          type: CALCULATED
+          key: prtMarker.pages_7d
+          delay: 1h
+          params: 'last(//prtMarker.total_pages) - last(//prtMarker.total_pages,#1:now-7d)'
+          description: 'Calcula a produtividade diária subtraindo o valor do contador de 7 dias atrás do valor atual.'
+          tags:
+            - tag: timeframe
+              value: weekly
+        - uuid: b467025816914923b782987311754404
+          name: 'Capacity: Impressões nas últimas 24h'
+          type: CALCULATED
+          key: prtMarker.pages_24h
+          delay: 1h
+          params: 'last(//prtMarker.total_pages) - last(//prtMarker.total_pages,#1:now-24h)'
+          description: 'Calcula a produtividade diária subtraindo o valor do contador de 24 horas atrás do valor atual.'
+          tags:
+            - tag: timeframe
+              value: daily
+        - uuid: 36e4ace9c4cb4f47b6ed27ae4aa0b8b0
+          name: 'Capacity: Impressões nos últimos 30 dias'
+          type: CALCULATED
+          key: prtMarker.pages_30d
+          delay: 1h
+          params: 'last(//prtMarker.total_pages) - last(//prtMarker.total_pages,#1:now-30d)'
+          description: 'Calcula a produtividade diária subtraindo o valor do contador de 30 dias atrás do valor atual.'
+          tags:
+            - tag: timeframe
+              value: weekly
+        - uuid: 2883446002f24b5399580460453d1052
+          name: 'Capacity: Contador total de impressões'
+          type: SNMP_AGENT
+          snmp_oid: .1.3.6.1.2.1.43.10.2.1.4.1.1
+          key: prtMarker.total_pages
+          delay: 5m
+          description: 'Contador global acumulado de páginas (Marker Life Count). É a métrica fundamental para todos os cálculos de volume de impressão.'
+          tags:
+            - tag: component
+              value: stats
+        - uuid: 88ce945476a14520a66347186b05a4a6
+          name: 'Device: Modelo da impressora'
+          type: SNMP_AGENT
+          snmp_oid: .1.3.6.1.2.1.25.3.2.1.3.1
+          key: sys.model
+          delay: 1d
+          value_type: TEXT
+          trends: '0'
+          description: 'Nome oficial do modelo registrado no firmware do equipamento.'
+          tags:
+            - tag: device
+              value: serial
+      discovery_rules:
+        - uuid: d1e2f3a4b5c64d7e8f9a0b1c2d3e4f5a
+          name: 'Supply: Descoberta de suprimentos'
+          type: SNMP_AGENT
+          snmp_oid: 'discovery[{#NOME_ITEM},.1.3.6.1.2.1.43.11.1.1.6.1]'
+          key: snmp.discovery.supplies
+          delay: 1h
+          description: 'Detecta automaticamente toners e kits de manutenção, utilizando JS para tratar os nomes hexadecimais da OKI.'
+          item_prototypes:
+            - uuid: 247194639962451f8936a182173ead92
+              name: 'Supply: {#NOME_ITEM}: Valor atual'
+              type: SNMP_AGENT
+              snmp_oid: '.1.3.6.1.2.1.43.11.1.1.9.1.{#SNMPINDEX}'
+              key: 'suprimento.atual[{#SNMPINDEX}]'
+              delay: 15m
+              tags:
+                - tag: component
+                  value: supply
+            - uuid: 8fc49dcb0bba4c3fb1e4443916960017
+              name: 'Supply: {#NOME_ITEM}: Capacidade máxima'
+              type: SNMP_AGENT
+              snmp_oid: '.1.3.6.1.2.1.43.11.1.1.8.1.{#SNMPINDEX}'
+              key: 'suprimento.max[{#SNMPINDEX}]'
+              delay: 1d
+              tags:
+                - tag: component
+                  value: supply
+            - uuid: a8364b4249054700810480362f689f92
+              name: 'Supply: {#NOME_ITEM}: Nível atual (%)'
+              type: CALCULATED
+              key: 'suprimento.porcentagem[{#SNMPINDEX}]'
+              units: '%'
+              params: 'last(//suprimento.atual[{#SNMPINDEX}]) / last(//suprimento.max[{#SNMPINDEX}]) * 100'
+              description: 'Porcentagem calculada da vida útil restante para o suprimento {#NOME_ITEM}.'
+              tags:
+                - tag: component
+                  value: supply
+              trigger_prototypes:
+                - uuid: 6a93f6444cea447fba409415b014302e
+                  expression: 'last(/OKI_Printer_Professional/suprimento.porcentagem[{#SNMPINDEX}])<15'
+                  name: 'OKI: Nível de Suprimento Baixo ({#NOME_ITEM}) em {HOST.NAME}'
+                  priority: WARNING
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var data = JSON.parse(value);
+                  for (var i = 0; i < data.length; i++) {
+                      var nomeLimpo = data[i]["{#NOME_ITEM}"]
+                          .replace(/OKI DATA CORP/gi, "")
+                          .replace(/Cartridge/gi, "")
+                          .replace(/Unit/gi, "")
+                          .trim();
+                      data[i]["{#NOME_ITEM}"] = nomeLimpo;
+                  }
+                  return JSON.stringify(data);
