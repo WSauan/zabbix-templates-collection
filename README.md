@@ -1,28 +1,23 @@
-# Zabbix Infrastructure Monitoring 🚀
+# IT Infrastructure Monitoring - Zabbix 7.0 🚀
 
-Repositório centralizado de templates e guias para monitoramento de infraestrutura corporativa utilizando **Zabbix 7.0**. Este projeto foca em soluções otimizadas para impressoras de rede e dashboards baseados em Raspberry Pi.
+Este repositório reúne templates profissionais e scripts de automação para monitoramento de ativos de TI, focado em alta disponibilidade e telemetria avançada.
 
-## 📂 Estrutura do Repositório
+## 📂 Organização do Projeto
 
-* **templates/printers/**: Templates SNMP otimizados para HP e OKI, com foco em contadores de página, suprimentos e status de hardware.
-* **templates/raspberry/**: Soluções para Kiosks (SGA, Kanban, PowerBI), incluindo monitoramento de sub-voltagem, temperatura e processos de interface (Firefox/Kiosk).
-* **scripts/**: Scripts de apoio para automação e coleta de dados nos Raspberrys.
+* **[Templates/Printers](./templates/printers/)**: Monitoramento de impressoras HP e OKI (Suprimentos, Contadores e Status).
+* **[Templates/Raspberry](./templates/raspberry/)**: Soluções para Kiosks (SGA, Kanban e PowerBI).
+* **[Scripts](./scripts/raspberry/)**: Inteligência externa para OCR e automação de interface.
 
-## 🛠️ Requisitos
-- **Zabbix Server/Proxy**: Versão 7.0 ou superior.
-- **Protocolos**: SNMP v1/v2c (Impressoras) e Zabbix Agent (Raspberry Pi).
-- **Hardware**: Raspberry Pi 3, 4 ou 5 rodando Raspberry Pi OS (Debian 12/13).
+## 🛠️ Tecnologias Utilizadas
+- **Zabbix 7.0**: Exportação em formato YAML com UUIDs v4.
+- **SNMP v1/v2c**: Para comunicação com ativos de rede.
+- **Tesseract OCR**: Para leitura de telas de PowerBI.
+- **JavaScript**: Para pré-processamento e limpeza de dados no Zabbix.
 
-## 🚀 Como Utilizar
+## 🚀 Como Começar
+1. Importe os templates da pasta `templates/` para o seu Zabbix.
+2. Configure as **Macros** necessárias (como `{$URL_KANBAN}`) nos Hosts.
+3. Instale as dependências nos Raspberrys seguindo o [Guia de Instalação](./templates/raspberry/README.md).
 
-1.  **Impressoras**:
-    * Vá em *Data collection* -> *Templates* -> *Import*.
-    * Selecione o arquivo `.yaml` desejado na pasta `templates/printers/`.
-    * Certifique-se de que o Host possui a interface SNMP configurada corretamente (Porta 161).
-
-2.  **Raspberry Pi**:
-    * Importe o template base `Raspberry Kiosk SGA.yaml`.
-    * Siga o guia específico dentro de `templates/raspberry/[pasta]/` para instalar as dependências necessárias no sistema operacional.
-
-## 📝 Notas de Versão
-- **v1.0**: Ajuste global de UUIDs para o padrão v4 e correção de OIDs para modelos OKI específicos.
+---
+**Desenvolvido por seu_nome** - Focado em Infraestrutura Corporativa.
