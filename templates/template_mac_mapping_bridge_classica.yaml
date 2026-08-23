@@ -1,0 +1,137 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 7df96b18c230490a9a0a9e2307226338
+      name: Templates
+  templates:
+    - uuid: 13b0c95d9a9b441f92a18cdad29fba91
+      template: 'Tabela MAC Switchs - BRIDGE Classica'
+      name: 'Tabela MAC Switchs - BRIDGE Classica'
+      description: |
+        Template para mapeamento de MACs usando a BRIDGE-MIB tradicional.
+        - Destinado a switches Huawei ou legados que não suportam Q-BRIDGE nativamente.
+        - Filtro automático Anti-Trunk (Descarta portas com mais de 55 MACs).
+        - Sem mapeamento dinâmico de VLAN (limitação da MIB).
+      groups:
+        - name: Templates
+      items:
+        - uuid: c61c31f4a9b3438a9a47385d852dbb50
+          name: 'Contagem de MACs descobertos'
+          type: CALCULATED
+          key: mac.count.total
+          delay: 6h
+          trends: '0'
+          params: 'count(/Tabela MAC Switchs - BRIDGE Classica/dot1dTpFdbPort[{#SNMPINDEX}],#1)'
+      discovery_rules:
+        - uuid: d91a27e7f61b4d21971758c0b503ec41
+          name: 'Descoberta MAC + Tipo Porta (Clássica)'
+          type: SNMP_AGENT
+          snmp_oid: 'discovery[{#MAC_PORTA},1.3.6.1.2.1.17.4.3.1.2, {#IFTYPE},1.3.6.1.2.1.2.2.1.3]'
+          key: snmp.mac.port.discovery.classic
+          delay: 6h
+          filter:
+            conditions:
+              - macro: '{#MAC_PORTA}'
+                value: '^([1-4][0-9]|5[0-2]|[1-9])$'
+                formulaid: A
+          item_prototypes:
+            - uuid: 28bc9ef29cc44f8080f339cf01615d03
+              name: 'Porta {#MAC_PORTA} -> MAC: {#MAC_HEX}'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.2.1.17.4.3.1.2.{#SNMPINDEX}'
+              key: 'dot1dTpFdbPort[{#SNMPINDEX}]'
+              delay: 6h
+              value_type: TEXT
+              trends: '0'
+              tags:
+                - tag: MAC
+                  value: '{#MAC_HEX}'
+                - tag: Porta
+                  value: '{#MAC_PORTA}'
+                - tag: Tabela
+                  value: 'MAC > porta'
+              trigger_prototypes:
+                - uuid: afbd7ccb2db34b86bb3dfc9f1a26b68a
+                  expression: 'count(/Tabela MAC Switchs - BRIDGE Classica/dot1dTpFdbPort[{#SNMPINDEX}],#10) > {$HIGH_MAC_PER_PORT}'
+                  name: 'Alto número de estações na porta {#MAC_PORTA}'
+                  status: DISABLED
+                  discover: NO_DISCOVER
+                  priority: INFO
+                  description: |
+                    A porta {#MAC_PORTA} tem mais de {$HIGH_MAC_PER_PORT} estações conectadas.
+                  manual_close: 'YES'
+                - uuid: 5ef3b8a1c9df4cc889f89efdb5e87a21
+                  expression: 'count(/Tabela MAC Switchs - BRIDGE Classica/dot1dTpFdbPort[{#SNMPINDEX}],#10) > {$MAX_MAC_PER_PORT}'
+                  name: 'Porta {#MAC_PORTA} com múltiplos MACs detectados'
+                  status: DISABLED
+                  discover: NO_DISCOVER
+                  priority: AVERAGE
+                  description: |
+                    A porta {#MAC_PORTA} está apresentando múltiplos endereços MAC.
+                  manual_close: 'YES'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var lld = JSON.parse(value);
+                  var result = [];
+                  
+                  // LIMITE DE MACS POR PORTA PARA FILTRO TRUNK
+                  var LIMITE_MACS_TRUNK = 55;
+                  
+                  // Contagem prévia de MACs por porta para identificar os Trunks
+                  var contagemPorPorta = {};
+                  for (var c = 0; c < lld.length; c++) {
+                      var pStr = lld[c]['{#MAC_PORTA}'];
+                      if(pStr) {
+                          contagemPorPorta[pStr] = (contagemPorPorta[pStr] || 0) + 1;
+                      }
+                  }
+                  
+                  var tiposExcluidos = [22, 24, 53, 131, 135, 161];
+                  
+                  // Processamento Final e Filtragem
+                  for (var i = 0; i < lld.length; i++) {
+                      var pStrAtual = lld[i]['{#MAC_PORTA}'];
+                      
+                      // FILTRO ANTI-TRUNK e Validação de integridade
+                      if (!pStrAtual || contagemPorPorta[pStrAtual] > LIMITE_MACS_TRUNK) {
+                          continue;
+                      }
+                  
+                      // Na MIB Clássica, o SNMPINDEX é apenas o MAC (6 blocos separados por ponto)
+                      var macParts = lld[i]['{#SNMPINDEX}'].split('.');
+                      
+                      if (macParts.length === 6) {
+                          var hexParts = [];
+                          for (var p = 0; p < macParts.length; p++) {
+                              var hex = parseInt(macParts[p], 10).toString(16).toUpperCase();
+                              if (hex.length === 1) { hex = '0' + hex; }
+                              hexParts.push(hex);
+                          }
+                          lld[i]['{#MAC_HEX}'] = hexParts.join(':');
+                      } else {
+                          lld[i]['{#MAC_HEX}'] = "INVALID_MAC";
+                      }
+                      
+                      var ifType = parseInt(lld[i]['{#IFTYPE}'], 10) || 6; 
+                      var porta = parseInt(lld[i]['{#MAC_PORTA}'], 10);
+                      
+                      // Valida tipos de portas e ignora virtuais
+                      if (tiposExcluidos.indexOf(ifType) === -1 && porta >= 1 && porta <= 150) {
+                          lld[i]['{#IFTYPE_DESCRICAO}'] = 'Porta_Fisica';
+                          result.push(lld[i]);
+                      }
+                  }
+                  
+                  return JSON.stringify(result);
+      tags:
+        - tag: Template
+          value: MAC
+        - tag: Tipo
+          value: Switch
+      macros:
+        - macro: '{$HIGH_MAC_PER_PORT}'
+          value: '15'
+        - macro: '{$MAX_MAC_PER_PORT}'
+          value: '10'

@@ -1,0 +1,152 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 7df96b18c230490a9a0a9e2307226338
+      name: Templates
+  templates:
+    - uuid: 95f08479dd844746bd41fd24fa869afa
+      template: 'Tabela MAC Switchs - Q-BRIDGE'
+      name: 'Tabela MAC Switchs - Q-BRIDGE'
+      description: |
+        Template para mapeamento completo de MACs nos switches utilizando Q-BRIDGE-MIB.
+        - Mapeamento por Porta e VLAN.
+        - Filtro automático Anti-Trunk (Descarta portas com mais de 55 MACs).
+      groups:
+        - name: Templates
+      items:
+        - uuid: ef0489b259ec4b74b0d347eee9d9ccb7
+          name: 'Contagem de MACs descobertos'
+          type: CALCULATED
+          key: mac.count.total
+          delay: 6h
+          trends: '0'
+          params: 'count(/Tabela MAC Switchs - Q-BRIDGE/dot1dTpFdbPort[{#SNMPINDEX}],#1)'
+      discovery_rules:
+        - uuid: 59a869fea04142308f75b9cc6c2a3492
+          name: 'Descoberta MAC + Tipo Porta (Completa)'
+          type: SNMP_AGENT
+          snmp_oid: 'discovery[{#MAC_PORTA},1.3.6.1.2.1.17.7.1.2.2.1.2, {#IFTYPE},1.3.6.1.2.1.2.2.1.3]'
+          key: snmp.mac.port.discovery.complete
+          delay: 6h
+          filter:
+            conditions:
+              - macro: '{#MAC_PORTA}'
+                value: '^([1-4][0-9]|5[0-2]|[1-9])$'
+                formulaid: A
+          item_prototypes:
+            - uuid: a75708bd2edd461b802d11b3c3072f98
+              name: 'Porta {#MAC_PORTA} -> MAC: {#MAC_HEX} (VLAN {#VLAN_ID})'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.2.1.17.7.1.2.2.1.2.{#SNMPINDEX}'
+              key: 'dot1dTpFdbPort[{#SNMPINDEX}]'
+              delay: 6h
+              value_type: TEXT
+              trends: '0'
+              tags:
+                - tag: MAC
+                  value: '{#MAC_HEX}'
+                - tag: Porta
+                  value: '{#MAC_PORTA}'
+                - tag: Tabela
+                  value: 'MAC > porta'
+                - tag: VLAN
+                  value: '{#VLAN_ID}'
+                - tag: Rede
+                  value: '{#VLAN_NOME}'
+              trigger_prototypes:
+                - uuid: dd45668d0b90430d95af133ce899b399
+                  expression: 'count(/Tabela MAC Switchs - Q-BRIDGE/dot1dTpFdbPort[{#SNMPINDEX}],#10) > {$HIGH_MAC_PER_PORT}'
+                  name: 'Alto número de estações na porta {#MAC_PORTA} (VLAN {#VLAN_ID})'
+                  status: DISABLED
+                  discover: NO_DISCOVER
+                  priority: INFO
+                  description: |
+                    A porta {#MAC_PORTA} tem mais de {$HIGH_MAC_PER_PORT} estações conectadas.
+                    VLAN: {#VLAN_NOME} ({#VLAN_ID})
+                  manual_close: 'YES'
+                - uuid: 5b7e521c3def4e54939bf1f68eeaded9
+                  expression: 'count(/Tabela MAC Switchs - Q-BRIDGE/dot1dTpFdbPort[{#SNMPINDEX}],#10) > {$MAX_MAC_PER_PORT}'
+                  name: 'Porta {#MAC_PORTA} com múltiplos MACs detectados (VLAN {#VLAN_ID})'
+                  status: DISABLED
+                  discover: NO_DISCOVER
+                  priority: AVERAGE
+                  description: |
+                    A porta {#MAC_PORTA} está apresentando múltiplos endereços MAC na VLAN {#VLAN_ID}.
+                  manual_close: 'YES'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var lld = JSON.parse(value);
+                  var result = [];
+                  
+                  // LIMITE DE MACS POR PORTA PARA FILTRO TRUNK
+                  var LIMITE_MACS_TRUNK = 55;
+                  
+                  // Dicionário de VLANs Genérico
+                  var nomeVlans = {
+                      "10": "VLAN_10_MGMT",
+                      "20": "VLAN_20_SERVIDORES",
+                      "30": "VLAN_30_USUARIOS",
+                      "40": "VLAN_40_VOIP",
+                      "50": "VLAN_50_CFTV",
+                      "100": "VLAN_100_GUEST"
+                  };
+                  
+                  // Contagem prévia de MACs por porta para identificar os Trunks
+                  var contagemPorPorta = {};
+                  for (var c = 0; c < lld.length; c++) {
+                      var pStr = lld[c]['{#MAC_PORTA}'];
+                      contagemPorPorta[pStr] = (contagemPorPorta[pStr] || 0) + 1;
+                  }
+                  
+                  var tiposExcluidos = [22, 24, 53, 131, 135, 161];
+                  
+                  // Processamento Final e Filtragem
+                  for (var i = 0; i < lld.length; i++) {
+                      var pStrAtual = lld[i]['{#MAC_PORTA}'];
+                      
+                      // FILTRO ANTI-TRUNK: Se a porta tem mais MACs que o limite, ignora
+                      if (contagemPorPorta[pStrAtual] > LIMITE_MACS_TRUNK) {
+                          continue;
+                      }
+                  
+                      // Separa a VLAN do MAC no índice
+                      var indexParts = lld[i]['{#SNMPINDEX}'].split('.');
+                      var vlanId = indexParts[0];
+                      var macParts = indexParts.slice(1, 7); 
+                      
+                      // Converte MAC decimal para hexadecimal
+                      var hexParts = [];
+                      for (var p = 0; p < macParts.length; p++) {
+                          var hex = parseInt(macParts[p], 10).toString(16).toUpperCase();
+                          if (hex.length === 1) { hex = '0' + hex; }
+                          hexParts.push(hex);
+                      }
+                      
+                      lld[i]['{#MAC_HEX}'] = hexParts.join(':');
+                      lld[i]['{#VLAN_ID}'] = vlanId;
+                      
+                      // Define o nome da VLAN baseado no dicionário
+                      lld[i]['{#VLAN_NOME}'] = nomeVlans[vlanId] ? nomeVlans[vlanId] : "VLAN " + vlanId;
+                      
+                      var ifType = parseInt(lld[i]['{#IFTYPE}'], 10) || 6; 
+                      var porta = parseInt(lld[i]['{#MAC_PORTA}'], 10);
+                      
+                      if (tiposExcluidos.indexOf(ifType) === -1 && porta >= 1 && porta <= 150) {
+                          lld[i]['{#IFTYPE_DESCRICAO}'] = 'Porta_Fisica';
+                          result.push(lld[i]);
+                      }
+                  }
+                  
+                  return JSON.stringify(result);
+      tags:
+        - tag: Template
+          value: MAC
+        - tag: Tipo
+          value: Switch
+      macros:
+        - macro: '{$HIGH_MAC_PER_PORT}'
+          value: '15'
+        - macro: '{$MAX_MAC_PER_PORT}'
+          value: '10'
