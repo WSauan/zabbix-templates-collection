@@ -4,7 +4,8 @@ Este repositório reúne templates profissionais e scripts de automação para m
 
 ## 📁 Organização do Projeto
 
-* [Templates/Network](templates/network/mac-mapping/): Mapeamento dinâmico de MAC Address por porta física (Q-BRIDGE e BRIDGE Clássica) com filtro Anti-Trunk via JavaScript.
+* [Templates/Network/MAC Mapping](templates/network/mac-mapping/): Mapeamento dinâmico de MAC Address por porta física (Q-BRIDGE e BRIDGE Clássica) com filtro Anti-Trunk via JavaScript.
+* [Templates/Network/PoE](templates/network/poe/): Monitoramento de fornecimento de energia Power over Ethernet (Universal RFC 3621 e Huawei VRP).
 * [Templates/Printers](templates/printers/): Monitoramento de impressoras HP e OKI (Suprimentos, Contadores e Status).
 * [Templates/Raspberry](templates/raspberry/): Soluções para Kiosks (SGA, Kanban e PowerBI).
 * [Scripts](scripts/): Inteligência externa para OCR e automação de interface.
