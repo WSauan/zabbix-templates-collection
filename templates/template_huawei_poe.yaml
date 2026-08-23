@@ -1,0 +1,86 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 7df96b18c230490a9a0a9e2307226338
+      name: Templates
+  templates:
+    - uuid: f52b9215886641b6b553be039dbbc113
+      template: 'Huawei VRP - PoE Monitoring'
+      name: 'Huawei VRP - PoE Monitoring'
+      description: |
+        Template para monitoramento de fornecimento de energia (PoE) por porta.
+        - Utiliza a HUAWEI-POE-MIB.
+        - Descoberta inteligente: Só cria itens se o switch for efetivamente PoE.
+        - Converte automaticamente miliwatts (mW) para Watts (W) e miliamperes (mA) para Amperes (A).
+      groups:
+        - name: Templates
+      discovery_rules:
+        - uuid: 13a5a78248c7402cb703e2304e221234
+          name: 'Descoberta de Portas PoE'
+          type: SNMP_AGENT
+          snmp_oid: 'discovery[{#PORT_NAME},1.3.6.1.4.1.2011.5.25.195.1.1.1]'
+          key: snmp.poe.discovery
+          delay: 1h
+          item_prototypes:
+            - uuid: 4b2c12a7812242139b83b3815041a991
+              name: 'PoE Porta {#PORT_NAME}: Potência Consumida'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.2011.5.25.195.1.1.3.{#SNMPINDEX}'
+              key: 'poe.power[{#SNMPINDEX}]'
+              delay: 5m
+              value_type: FLOAT
+              units: W
+              description: 'Consumo atual de energia da porta em Watts.'
+              preprocessing:
+                - type: MULTIPLIER
+                  parameters:
+                    - '0.001'
+              tags:
+                - tag: Porta
+                  value: '{#PORT_NAME}'
+                - tag: Sensor
+                  value: 'Potencia_W'
+            - uuid: 7a82c4481d6645af8991b107084de110
+              name: 'PoE Porta {#PORT_NAME}: Corrente'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.2011.5.25.195.1.1.6.{#SNMPINDEX}'
+              key: 'poe.current[{#SNMPINDEX}]'
+              delay: 5m
+              value_type: FLOAT
+              units: A
+              description: 'Corrente fornecida pela porta em Amperes.'
+              preprocessing:
+                - type: MULTIPLIER
+                  parameters:
+                    - '0.001'
+              tags:
+                - tag: Porta
+                  value: '{#PORT_NAME}'
+                - tag: Sensor
+                  value: 'Corrente_A'
+            - uuid: d33e218c5e0f4f9f8b056157dc55babc
+              name: 'PoE Porta {#PORT_NAME}: Voltagem'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.2011.5.25.195.1.1.7.{#SNMPINDEX}'
+              key: 'poe.voltage[{#SNMPINDEX}]'
+              delay: 5m
+              value_type: FLOAT
+              units: V
+              description: 'Voltagem atual da porta em Volts.'
+              tags:
+                - tag: Porta
+                  value: '{#PORT_NAME}'
+                - tag: Sensor
+                  value: 'Voltagem_V'
+          graph_prototypes:
+            - uuid: 8d99c43b9c7b41eeb09520a0b63afbb3
+              name: 'PoE Porta {#PORT_NAME}: Consumo de Energia'
+              graph_items:
+                - drawtype: GRADIENT_LINE
+                  color: 199C0D
+                  item:
+                    host: 'Huawei VRP - PoE Monitoring'
+                    key: 'poe.power[{#SNMPINDEX}]'
+      tags:
+        - tag: Template
+          value: PoE
